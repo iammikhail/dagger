@@ -3,7 +3,7 @@
 #include <iostream>
 #include <vector>
 
-namespace tasky {
+namespace dagger {
 class Task {
   std::string _name;
   std::function<void()> _func;
@@ -48,4 +48,4 @@ Task &Task::depends_on(Ts &&...tasks) {
   (_parents.push_back(&tasks), ...);
   return *this;
 }
-}  // namespace tasky
+}  // namespace dagger
