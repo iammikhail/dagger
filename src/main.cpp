@@ -8,19 +8,16 @@ void doThing() { std::cout << "Doing a thing!" << std::endl; }
 
 int main() {
   dagger::DAG dag;
-  dagger::Task t = dag.emplace(doThing);
-  t.run();
+  dagger::Task t = dag.add_task(doThing).with_name("t");
   dagger::Task t2 =
-      dag.emplace([] { std::cout << "Doing another thing!" << std::endl; });
+      dag.add_task([] { std::cout << "Doing another thing!" << std::endl; })
+          .with_name("t2");
 
-  t2.run();
+  dagger::Task t3 = dag.add_task().with_name("t3");
 
-  dagger::Task t3 = dag.emplace();
-  t3.run();
-
-  dagger::Task t4 = dag.emplace();
+  dagger::Task t4 = dag.add_task().with_name("t4");
   t4.with_name("t4").with_func([] { std::cout << "Hello from t4\n"; });
-  t4.run();
 
-  t3.depends_on(t2);
+  t2.depends_on(t4);
+  dag.run();
 }

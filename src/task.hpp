@@ -1,5 +1,7 @@
 #pragma once
 
+#include <concepts>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -23,7 +25,7 @@ class Task {
 
   std::string name();
 
-  template <typename F>
+  template <std::invocable F>
   Task &with_func(F &&);
 
   void run();
@@ -41,22 +43,33 @@ class Task::Node {
   std::function<void()> func;
   std::vector<Node *> successors;
   std::vector<Node *> predecessors;
-  bool is_source{false};
+  bool is_source{true};
 
   Node();
 
-  template <typename F>
+  template <std::invocable F>
   Node(F &&);
+
+  template <std::invocable F>
+  Node(const std::string &, F &&);
 };
 
-Task::Node::Node() : name{""}, func{[] {}} {}
+Task::Node::Node() : Node{"", [] {}} {}
 
-template <typename F>
-Task::Node::Node(F &&func) : name{""}, func{std::forward<F>(func)} {}
+template <std::invocable F>
+inline Task::Node::Node(F &&func) : Node{"", std::forward<F>(func)} {}
 
-Task::Task(const Task &other) : node{other.node} {}
+template <std::invocable F>
+inline Task::Node::Node(const std::string &name, F &&func)
+    : name{name}, func{std::forward<F>(func)} {
+  std::cout << __PRETTY_FUNCTION__ << std::endl;
+}
 
-Task::Task(Node *node) : node{node} {}
+inline Task::Task(const Task &other) : node{other.node} {
+  std::cout << __PRETTY_FUNCTION__ << std::endl;
+}
+
+inline Task::Task(Node *node) : node{node} {}
 
 template <typename... Ts>
   requires Nonempty<Ts...>
@@ -67,16 +80,16 @@ Task &Task::depends_on(Ts &&...tasks) {
   return *this;
 }
 
-void Task::run() { node->func(); }
+inline void Task::run() { node->func(); }
 
-Task &Task::with_name(const std::string &name) {
+inline Task &Task::with_name(const std::string &name) {
   node->name = name;
   return *this;
 }
 
-std::string Task::name() { return node->name; }
+inline std::string Task::name() { return node->name; }
 
-template <typename F>
+template <std::invocable F>
 Task &Task::with_func(F &&func) {
   node->func = std::function<void()>(std::forward<F>(func));
   return *this;
