@@ -5,11 +5,14 @@
 #include <string>
 #include <vector>
 
+#include "dag.hpp"
 #include "type_utils.hpp"
 
 namespace dagger {
 class Task {
   friend class DAG;
+  friend class SequentialExecutor;
+  friend class NaiveConcurrentExecutor;
 
   class Node;
 
@@ -38,12 +41,15 @@ class Task {
 class Task::Node {
   friend class Task;
   friend class DAG;
+  friend class SequentialExecutor;
+  friend class NaiveConcurrentExecutor;
 
   std::string name;
   std::function<void()> func;
   std::vector<Node *> successors;
   std::vector<Node *> predecessors;
   bool is_source{true};
+  std::atomic<size_t> consume_cnt = 0;
 
   Node();
 
@@ -74,7 +80,7 @@ inline Task::Task(Node *node) : node{node} {}
 template <typename... Ts>
   requires Nonempty<Ts...>
 Task &Task::depends_on(Ts &&...tasks) {
-  node->is_source = false;
+  node->_is_source = false;
   (node->predecessors.push_back(tasks.node), ...);
   (..., tasks.node->successors.push_back(node));
   return *this;

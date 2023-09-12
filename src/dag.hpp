@@ -20,6 +20,12 @@ class DAG {
  public:
   template <typename... Args>
   Task add_task(Args &&...args);
+  size_t size() const;
+  bool empty() const;
+  bool empty();
+
+  std::vector<Node *>::const_iterator begin() const;
+  std::vector<Node *>::const_iterator end() const;
 
   void run();
   ~DAG();
@@ -29,6 +35,17 @@ template <typename... Args>
 inline Task DAG::add_task(Args &&...args) {
   nodes.push_back(new Node(std::forward<Args>(args)...));
   return Task(nodes.back());
+}
+
+inline bool DAG::empty() const { return nodes.empty(); }
+inline bool DAG::empty() { return nodes.empty(); }
+
+inline std::vector<Task::Node *>::const_iterator DAG::begin() const {
+  return nodes.cbegin();
+}
+
+inline std::vector<Task::Node *>::const_iterator DAG::end() const {
+  return nodes.cend();
 }
 
 void DAG::run() {
@@ -61,5 +78,7 @@ DAG::~DAG() {
     nodes.pop_back();
   }
 }
+
+size_t DAG::size() const { return nodes.size(); }
 
 }  // namespace dagger
