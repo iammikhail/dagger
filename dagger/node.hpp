@@ -13,10 +13,8 @@ class DAG;
 class Node {
   friend class Task;
   friend class DAG;
-  friend class ConsumableNode;
   friend class SequentialExecutor;
   friend class ThreadPoolExecutor;
-  friend class DAGRun;
 
   std::string name;
   std::function<void()> func;

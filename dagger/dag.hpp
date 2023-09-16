@@ -17,7 +17,6 @@ class CycleDetected : public std::exception {
 };
 
 class DAG {
-  friend class DAGRun;
   friend class Node;
   friend class ThreadPoolExecutor;
   std::vector<std::unique_ptr<Node>> nodes;
@@ -46,7 +45,7 @@ class DAG {
   void run(bool dryrun = false);
 
   DAGRun &create_run() {
-    dag_runs.push(std::make_unique<DAGRun>(nodes.size()));
+    dag_runs.push(std::unique_ptr<DAGRun>(new DAGRun(nodes.size())));
     return *dag_runs.back();
   }
 };

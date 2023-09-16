@@ -10,9 +10,6 @@
 namespace dagger {
 class Task {
   friend class DAG;
-  friend class ConsumableNode;
-  friend class SequentialExecutor;
-  friend class ThreadPoolExecutor;
 
   Node *node{nullptr};
 
