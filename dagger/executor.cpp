@@ -1,5 +1,4 @@
-#include "executor.hpp"
-
+#include <dagger/executor.hpp>
 #include <queue>
 #include <unordered_set>
 
@@ -29,11 +28,11 @@ void SequentialExecutor::execute(const DAG &dag) {
 }
 
 bool NaiveConcurrentExecutor::wait_for_task(Task::Node *&node) {
-  if (dag != nullptr && nodes_consumed.load() == dag->size()) {
+  std::unique_lock lock(work_mutex);
+  work_cv.wait(lock, [&]() { return !work.empty() || done; });
+  if (done) {
     return false;
   }
-  std::unique_lock lock(work_mutex);
-  work_cv.wait(lock, [&]() { return !work.empty(); });
   node = work.front();
   work.pop();
   return true;
@@ -43,23 +42,31 @@ NaiveConcurrentExecutor::NaiveConcurrentExecutor(const DAG &dag,
                                                  size_t num_threads)
     : dag{&dag}, threads{num_threads} {
   for (size_t i = 0; i < num_threads; ++i) {
-    threads[i] = std::thread([this]() {
-      Task::Node *node{nullptr};
-      while (true) {
+    threads[i] = std::thread([this, i = i]() {
+      while (!done) {
+        Task::Node *node{nullptr};
         if (!wait_for_task(node)) {
-          promise.set_value();
-          done_cv.notify_one();
+          return;
         }
+
         // thread now has a valid node to run
         node->func();
-        nodes_consumed.fetch_add(1);
-        {
+
+        if (node->successors.size() > 0) {
           std::scoped_lock lock(work_mutex);
           for (auto &child : node->successors) {
             if (child->consume_cnt.fetch_sub(1) == 1) work.push(child);
           }
+          work_cv.notify_one();
         }
-        work_cv.notify_one();
+
+        if (nodes_consumed.fetch_add(1) == this->dag->size() - 1) {
+          promise.set_value();
+          done = true;
+          done_cv.notify_one();
+          work_cv.notify_all();
+          return;
+        }
       }
     });
   }
@@ -67,22 +74,20 @@ NaiveConcurrentExecutor::NaiveConcurrentExecutor(const DAG &dag,
 
 std::future<void> NaiveConcurrentExecutor::execute() {
   for (auto &node : *dag) {
-    size_t n = 0;
     if (node->is_source) {
       work.push(node);
-      ++n;
     } else {
       node->consume_cnt.store(node->predecessors.size());
     }
-    nodes_consumed.store(n);
     work_cv.notify_all();
   }
-  return std::future(promise.get_future());
+  return promise.get_future();
 }
 
 NaiveConcurrentExecutor::~NaiveConcurrentExecutor() {
   std::unique_lock lock(done_mutex);
-  done_cv.wait(lock);
+  done_cv.wait(lock, [&]() { return done.load(); });
+
   for (auto &t : threads) {
     t.join();
   }

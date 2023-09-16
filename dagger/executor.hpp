@@ -1,8 +1,9 @@
+#pragma once
+
+#include <dagger/dag.hpp>
 #include <future>
 #include <queue>
 #include <thread>
-
-#include "dag.hpp"
 
 namespace dagger {
 
@@ -26,6 +27,7 @@ class NaiveConcurrentExecutor {
   std::vector<std::thread> threads;
   std::atomic<size_t> nodes_consumed = 0;
   std::promise<void> promise;
+  std::atomic<bool> done = false;
 
   bool wait_for_task(Task::Node *&);
 
