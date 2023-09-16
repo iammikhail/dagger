@@ -8,7 +8,7 @@ void DAG::run(bool dryrun) {
   std::queue<Node *> q;
   for (auto &node : nodes) {
     if (!node->is_source) continue;
-    q.push(node);
+    q.push(node.get());
   }
 
   if (q.empty()) {
@@ -26,11 +26,6 @@ void DAG::run(bool dryrun) {
   }
 }
 
-DAG::~DAG() {
-  while (!nodes.empty()) {
-    delete nodes.back();
-    nodes.pop_back();
-  }
-}
+DAGRun *Node::get_current_dag_run() { return owner->dag_runs.front().get(); }
 
 }  // namespace dagger

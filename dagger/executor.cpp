@@ -1,15 +1,19 @@
 #include <dagger/executor.hpp>
+#include <dagger/node.hpp>
 #include <queue>
 #include <unordered_set>
 
 namespace dagger {
-void SequentialExecutor::execute(const DAG &dag) {
+
+void SequentialExecutor::execute(DAG &dag) {
   if (dag.empty()) return;
-  std::unordered_set<Task::Node *> seen;
-  std::queue<Task::Node *> q;
+  std::unordered_set<Node *> seen;
+  std::queue<Node *> q;
   for (const auto &node : dag) {
-    if (!node->is_source) continue;
-    q.push(node);
+    if (!node->is_source) {
+      continue;
+    }
+    q.push(node.get());
   }
 
   if (q.empty()) {
@@ -17,9 +21,11 @@ void SequentialExecutor::execute(const DAG &dag) {
   }
 
   while (!q.empty()) {
-    Task::Node *node = q.front();
+    Node *node = q.front();
     q.pop();
-    if (seen.contains(node)) continue;
+    if (seen.contains(node)) {
+      continue;
+    }
     node->func();
     for (auto &child : node->successors) {
       q.push(child);
@@ -27,7 +33,8 @@ void SequentialExecutor::execute(const DAG &dag) {
   }
 }
 
-bool NaiveConcurrentExecutor::wait_for_task(Task::Node *&node) {
+// Returns false if there are no more tasks to wait for
+bool ThreadPoolExecutor::wait_for_task(Node *&node) {
   std::unique_lock lock(work_mutex);
   work_cv.wait(lock, [&]() { return !work.empty() || done; });
   if (done) {
@@ -38,15 +45,31 @@ bool NaiveConcurrentExecutor::wait_for_task(Task::Node *&node) {
   return true;
 }
 
-NaiveConcurrentExecutor::NaiveConcurrentExecutor(const DAG &dag,
-                                                 size_t num_threads)
-    : dag{&dag}, threads{num_threads} {
+void ThreadPoolExecutor::schedule_epilogue(Node *node) {
+  auto dag_run = node->get_current_dag_run();
+  if (dag_run->nodes_to_consume.fetch_sub(1) != 1) {
+    return;
+  }
+  node->owner->dag_runs.pop();
+  dag_run->promise.set_value();
+
+  // if there are more times the dag should run
+  if (node->owner->dag_runs.size() > 0) {
+    schedule_dag(*node->owner);
+  } else if (num_dag_runs.fetch_sub(1) == 1) {
+    // Signal to destructor thread for OK to destruct
+    done_cv.notify_one();
+  }
+}
+
+ThreadPoolExecutor::ThreadPoolExecutor(size_t num_threads)
+    : threads{num_threads} {
   for (size_t i = 0; i < num_threads; ++i) {
-    threads[i] = std::thread([this, i = i]() {
+    threads[i] = std::thread([this]() {
       while (!done) {
-        Task::Node *node{nullptr};
+        Node *node{nullptr};
         if (!wait_for_task(node)) {
-          return;
+          continue;
         }
 
         // thread now has a valid node to run
@@ -60,34 +83,41 @@ NaiveConcurrentExecutor::NaiveConcurrentExecutor(const DAG &dag,
           work_cv.notify_one();
         }
 
-        if (nodes_consumed.fetch_add(1) == this->dag->size() - 1) {
-          promise.set_value();
-          done = true;
-          done_cv.notify_one();
-          work_cv.notify_all();
-          return;
-        }
+        schedule_epilogue(node);
       }
     });
   }
 }
 
-std::future<void> NaiveConcurrentExecutor::execute() {
-  for (auto &node : *dag) {
+void ThreadPoolExecutor::schedule_dag(const DAG &dag) {
+  for (auto &node : dag) {
     if (node->is_source) {
-      work.push(node);
+      std::scoped_lock lock(work_mutex);
+      work.push(node.get());
     } else {
       node->consume_cnt.store(node->predecessors.size());
     }
-    work_cv.notify_all();
   }
-  return promise.get_future();
+  work_cv.notify_all();
 }
 
-NaiveConcurrentExecutor::~NaiveConcurrentExecutor() {
-  std::unique_lock lock(done_mutex);
-  done_cv.wait(lock, [&]() { return done.load(); });
+std::future<void> ThreadPoolExecutor::execute(DAG &dag) {
+  DAGRun &run = dag.create_run();
+  ++num_dag_runs;
+  auto future = run.promise.get_future();
+  if (dag.dag_runs.size() > 1) {
+    return future;
+  }
+  schedule_dag(dag);
+  return future;
+}
 
+ThreadPoolExecutor::~ThreadPoolExecutor() {
+  std::unique_lock lock(done_mutex);
+  done_cv.wait(lock, [&]() { return num_dag_runs.load() == 0; });
+  // signal that we are done to worker threads so they can finish executing
+  done.store(true);
+  work_cv.notify_all();
   for (auto &t : threads) {
     t.join();
   }

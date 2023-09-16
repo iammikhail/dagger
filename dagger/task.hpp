@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <dagger/node.hpp>
 #include <dagger/type_utils.hpp>
 #include <iostream>
 #include <string>
@@ -9,35 +10,9 @@
 namespace dagger {
 class Task {
   friend class DAG;
+  friend class ConsumableNode;
   friend class SequentialExecutor;
-  friend class NaiveConcurrentExecutor;
-
-  class Node {
-    friend class Task;
-    friend class DAG;
-    friend class SequentialExecutor;
-    friend class NaiveConcurrentExecutor;
-
-    std::string name;
-    std::function<void()> func;
-    std::vector<Node *> successors;
-    std::vector<Node *> predecessors;
-    bool is_source{true};
-    std::atomic<size_t> consume_cnt = 0;
-
-    inline Node() : Node{"", [] {}} {}
-
-    template <std::invocable F>
-    inline Node(F &&func) : Node{"", std::forward<F>(func)} {}
-
-    template <std::invocable F>
-    inline Node(const std::string &name, F &&func)
-        : name{name}, func{std::forward<F>(func)} {
-#ifdef DEBUG
-      std::cout << __PRETTY_FUNCTION__ << std::endl;
-#endif
-    }
-  };
+  friend class ThreadPoolExecutor;
 
   Node *node{nullptr};
 

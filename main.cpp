@@ -19,7 +19,7 @@ int main() {
   t4.with_name("t4").with_func([] { std::cerr << "Hello from t4\n"; });
 
   t2.depends_on(t4);
-  dagger::NaiveConcurrentExecutor executor(dag);
-  std::future<void> f = executor.execute();
+  dagger::ThreadPoolExecutor executor;
+  std::future<void> f = executor.execute(dag);
   f.wait();
 }
