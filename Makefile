@@ -12,18 +12,9 @@ BUILD_DIR = build
 
 TARGET = main
 SOURCES = main.cpp $(shell find dagger -type f -name "*.cpp")
-$(info $(SOURCES))
-# OBJECTS = $(patsubst dagger/%,build/%,${SOURCES:.cpp=.o})
 OBJECTS = ${addprefix ${BUILD_DIR}/,${SOURCES:.cpp=.o}}
-$(info $(OBJECTS))
 DEPENDS = ${OBJECTS:.o=.d}
 LIB = -pthread
-
-# all: directories ${TARGET}
-
-# directories:
-# 	@mkdir -p bin
-# 	@mkdir -p build
 
 ${TARGET}: ${OBJECTS}
 	@mkdir -p ${TARGET_DIR}
